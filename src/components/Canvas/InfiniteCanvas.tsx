@@ -16,6 +16,17 @@ import ElementInputModal, { ModalField } from './ElementInputModal';
 
 export type Tool = 'select' | 'text' | 'sticky' | 'image' | 'link' | 'stroke';
 
+/** Map keyboard shortcut keys to tools */
+const KEY_TO_TOOL: Record<string, Tool> = {
+  s: 'select',
+  Escape: 'select',
+  t: 'text',
+  n: 'sticky',
+  i: 'image',
+  l: 'link',
+  d: 'stroke',
+};
+
 export interface CanvasElement {
   id: string;
   board_code: string;
@@ -45,7 +56,9 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
 
   const [tool, setTool] = useState<Tool>('select');
   const [elements, setElements] = useState<CanvasElement[]>([]);
-  const [selectedCoord, setSelectedCoord] = useState<Coordinate | null>(null);
+  const [loading, setLoading] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [selectedCoord, _setSelectedCoord] = useState<Coordinate | null>(null);
   const [coordPanelOpen, setCoordPanelOpen] = useState(false);
 
   // Pending element placement (replaces window.prompt)
@@ -68,6 +81,7 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
         const data = await res.json();
         setElements(data.filter((e: CanvasElement) => !e.deleted));
       }
+      setLoading(false);
     }
     loadElements();
 
@@ -144,9 +158,29 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   }, [onWheel]);
 
   const onKeyDown = useCallback((e: KeyboardEvent) => {
+    // Don't fire shortcuts when user is typing in an input/textarea
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+      if (e.code === 'Space' && !spaceDown.current) {
+        // still allow space-to-pan when focused outside canvas text fields
+      } else {
+        return;
+      }
+    }
+
     if (e.code === 'Space' && !spaceDown.current) {
       spaceDown.current = true;
       if (containerRef.current) containerRef.current.style.cursor = 'grab';
+      return;
+    }
+
+    // Tool shortcut keys (only when no modifier is held)
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      const mapped = KEY_TO_TOOL[e.key];
+      if (mapped) {
+        e.preventDefault();
+        setTool(mapped);
+      }
     }
   }, []);
   const onKeyUp = useCallback((e: KeyboardEvent) => {
@@ -245,6 +279,7 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   }
 
   const transform = `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px) scale(${scaleRef.current})`;
+  const zoomPercent = Math.round(scaleRef.current * 100);
 
   // Build live stroke SVG path
   const livePath = isDrawingStroke.current && strokePoints.current.length > 1
@@ -270,6 +305,16 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
         </defs>
         <rect width="100%" height="100%" fill="url(#grid)" />
       </svg>
+
+      {/* Loading overlay */}
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center z-40 pointer-events-none">
+          <div className="flex flex-col items-center gap-3 bg-gray-900/80 border border-gray-700 rounded-2xl px-8 py-6 shadow-2xl">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-gray-400">Loading board…</span>
+          </div>
+        </div>
+      )}
 
       {/* Infinite plane */}
       <div
@@ -298,12 +343,12 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
 
         {/* Elements */}
         {elements.map(el => {
-          const props = { key: el.id, element: el, onDelete: () => deleteElement(el.id) };
-          if (el.type === 'text') return <TextElement {...props} />;
-          if (el.type === 'sticky') return <StickyElement {...props} />;
-          if (el.type === 'image') return <ImageElement {...props} />;
-          if (el.type === 'link') return <LinkElement {...props} />;
-          if (el.type === 'stroke') return <StrokeElement {...props} />;
+          const props = { element: el, onDelete: () => deleteElement(el.id) };
+          if (el.type === 'text') return <TextElement key={el.id} {...props} />;
+          if (el.type === 'sticky') return <StickyElement key={el.id} {...props} />;
+          if (el.type === 'image') return <ImageElement key={el.id} {...props} />;
+          if (el.type === 'link') return <LinkElement key={el.id} {...props} />;
+          if (el.type === 'stroke') return <StrokeElement key={el.id} {...props} />;
           return null;
         })}
       </div>
@@ -313,6 +358,11 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
 
       {/* Toolbar */}
       <CanvasToolbar tool={tool} onToolChange={setTool} />
+
+      {/* Zoom level indicator */}
+      <div className="absolute bottom-4 right-4 bg-gray-900/80 border border-gray-700 rounded-lg px-3 py-1.5 text-xs font-mono text-gray-400 pointer-events-none select-none shadow z-10">
+        {zoomPercent}%
+      </div>
 
       {/* Coord panel */}
       {coordPanelOpen && selectedCoord && (
