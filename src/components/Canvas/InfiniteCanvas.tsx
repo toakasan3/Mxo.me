@@ -11,6 +11,7 @@ import LinkElement from './elements/LinkElement';
 import StrokeElement from './elements/StrokeElement';
 import Cursors from './Cursors';
 import CoordPanel from '@/components/CoordSearch/CoordPanel';
+import ElementInputModal, { ModalField } from './ElementInputModal';
 
 export type Tool = 'select' | 'text' | 'sticky' | 'image' | 'link' | 'stroke';
 
@@ -45,6 +46,10 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   const [elements, setElements] = useState<CanvasElement[]>([]);
   const [selectedCoord, setSelectedCoord] = useState<Coordinate | null>(null);
   const [coordPanelOpen, setCoordPanelOpen] = useState(false);
+
+  // Pending element placement (replaces window.prompt)
+  type PendingPlacement = { type: string; x: number; y: number; fields: ModalField[] };
+  const [pendingPlacement, setPendingPlacement] = useState<PendingPlacement | null>(null);
 
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
@@ -220,18 +225,13 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
     const cy = (e.clientY - offsetRef.current.y) / scaleRef.current;
 
     if (tool === 'text') {
-      const text = window.prompt('Enter text:');
-      if (text) await addElement('text', cx, cy, { text, fontSize: 16, color: '#ffffff' });
+      setPendingPlacement({ type: 'text', x: cx, y: cy, fields: [{ label: 'Text content', placeholder: 'Enter text…' }] });
     } else if (tool === 'sticky') {
-      const text = window.prompt('Sticky note content:') || 'Note';
-      await addElement('sticky', cx, cy, { text, color: '#FFEAA7' });
+      setPendingPlacement({ type: 'sticky', x: cx, y: cy, fields: [{ label: 'Sticky note content', placeholder: 'Note…' }] });
     } else if (tool === 'image') {
-      const url = window.prompt('Image URL:');
-      if (url) await addElement('image', cx, cy, { url, width: 200, height: 150 });
+      setPendingPlacement({ type: 'image', x: cx, y: cy, fields: [{ label: 'Image URL', placeholder: 'https://…' }] });
     } else if (tool === 'link') {
-      const url = window.prompt('URL:');
-      const label = window.prompt('Label (optional):') || url;
-      if (url) await addElement('link', cx, cy, { url, label });
+      setPendingPlacement({ type: 'link', x: cx, y: cy, fields: [{ label: 'URL', placeholder: 'https://…' }, { label: 'Label (optional)', placeholder: 'Display text' }] });
     }
   }, [tool, identity.color, addElement, forceRender]);
 
@@ -321,6 +321,28 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
           identity={identity}
           elements={elements}
           onClose={() => setCoordPanelOpen(false)}
+        />
+      )}
+
+      {/* Element input modal (replaces window.prompt) */}
+      {pendingPlacement && (
+        <ElementInputModal
+          title={`Add ${pendingPlacement.type}`}
+          fields={pendingPlacement.fields}
+          onConfirm={async (values) => {
+            const { type, x, y } = pendingPlacement;
+            if (type === 'text' && values[0]?.trim()) {
+              await addElement('text', x, y, { text: values[0].trim(), fontSize: 16, color: '#ffffff' });
+            } else if (type === 'sticky') {
+              await addElement('sticky', x, y, { text: values[0]?.trim() || 'Note', color: '#FFEAA7' });
+            } else if (type === 'image' && values[0]?.trim()) {
+              await addElement('image', x, y, { url: values[0].trim(), width: 200, height: 150 });
+            } else if (type === 'link' && values[0]?.trim()) {
+              await addElement('link', x, y, { url: values[0].trim(), label: values[1]?.trim() || values[0].trim() });
+            }
+            setPendingPlacement(null);
+          }}
+          onCancel={() => setPendingPlacement(null)}
         />
       )}
     </div>

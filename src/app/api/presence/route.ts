@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 
+// We maintain a Redis Set `room-users:{room}` containing all active userIds for the room.
+// Each user's cursor data is stored at `presence:{room}:{userId}` with an 8s TTL.
+// On GET we read the set members, fetch each key, and remove stale members whose keys have expired.
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { room, userId, x, y, name, color } = body;
-  const key = `presence:${room}:${userId}`;
-  await redis.set(key, JSON.stringify({ userId, x, y, name, color }), { ex: 8 });
+  if (!room || !userId) return NextResponse.json({ ok: true });
+
+  const dataKey = `presence:${room}:${userId}`;
+  const setKey = `room-users:${room}`;
+
+  // Store cursor data with 8s TTL
+  await redis.set(dataKey, JSON.stringify({ userId, x, y, name, color }), { ex: 8 });
+  // Track userId in the room set (no TTL on the set itself — we clean stale members on GET)
+  await redis.sadd(setKey, userId);
+
   return NextResponse.json({ ok: true });
 }
 
@@ -13,11 +25,25 @@ export async function GET(req: NextRequest) {
   const room = req.nextUrl.searchParams.get('room');
   if (!room) return NextResponse.json([]);
 
-  // Scan for keys matching presence:{room}:*
-  const keys = await redis.keys(`presence:${room}:*`);
-  if (!keys.length) return NextResponse.json([]);
+  const setKey = `room-users:${room}`;
+  const userIds: string[] = await redis.smembers(setKey);
+  if (!userIds.length) return NextResponse.json([]);
 
-  const values = await Promise.all(keys.map((k: string) => redis.get(k)));
-  const cursors = values.filter(Boolean).map(v => typeof v === 'string' ? JSON.parse(v) : v);
+  // Fetch cursor data for each tracked user
+  const pairs = await Promise.all(
+    userIds.map(async (uid) => {
+      const val = await redis.get(`presence:${room}:${uid}`);
+      return { uid, val };
+    })
+  );
+
+  // Remove stale members from the set (their TTL-ed keys have expired)
+  const stale = pairs.filter(p => !p.val).map(p => p.uid);
+  if (stale.length) await redis.srem(setKey, ...stale);
+
+  const cursors = pairs
+    .filter(p => p.val)
+    .map(p => (typeof p.val === 'string' ? JSON.parse(p.val) : p.val));
+
   return NextResponse.json(cursors);
 }
