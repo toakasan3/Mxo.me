@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 
-export type ModalField = { label: string; placeholder?: string; value?: string };
+export type ModalField = { label: string; placeholder?: string; value?: string; type?: 'text' | 'password' };
 
 interface Props {
   title: string;
@@ -32,12 +32,15 @@ export default function ElementInputModal({ title, fields, onConfirm, onCancel }
             <label className="text-gray-300 text-sm">{field.label}</label>
             <input
               ref={i === 0 ? firstRef : undefined}
-              type="text"
+              type={field.type === 'password' ? 'password' : 'text'}
               className="w-full bg-gray-700 border border-gray-500 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder={field.placeholder}
               value={values[i]}
               onChange={e => setValues(prev => prev.map((v, j) => j === i ? e.target.value : v))}
             />
+            {field.type === 'password' && values[i] && (
+              <p className="text-yellow-400 text-xs mt-1">⚠️ Key cannot be recovered if lost.</p>
+            )}
           </div>
         ))}
         <div className="flex justify-end gap-3 pt-1">

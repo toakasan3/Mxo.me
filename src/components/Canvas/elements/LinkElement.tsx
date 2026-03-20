@@ -28,6 +28,7 @@ export default function LinkElement({ element, onDelete }: Props) {
         onClick={e => e.stopPropagation()}
       >
         🔗 {data.label as string}
+        {element.is_locked && <span className="ml-1 text-xs opacity-60" title="Locked">🔒</span>}
       </a>
       <button onClick={onDelete} className="hidden group-hover:block absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full text-white text-xs leading-5 text-center">×</button>
     </div>
