@@ -3,7 +3,13 @@ import { supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/redis';
 
 function sanitize(text: string): string {
-  return text.replace(/<[^>]*>/g, '').slice(0, 1000);
+  let result = text;
+  let prev: string;
+  do {
+    prev = result;
+    result = result.replace(/<[^>]*>/g, '');
+  } while (result !== prev);
+  return result.slice(0, 1000);
 }
 
 export async function GET(req: NextRequest) {

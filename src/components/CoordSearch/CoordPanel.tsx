@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Coordinate } from '@/lib/coord-utils';
 import { Identity } from '@/lib/identity';
 import { supabase } from '@/lib/supabase';
+import { apiUrl } from '@/lib/api';
 import { CanvasElement } from '../Canvas/InfiniteCanvas';
 
 interface Reply {
@@ -35,7 +36,7 @@ export default function CoordPanel({ boardCode, coord, identity, elements, onClo
 
   useEffect(() => {
     async function loadReplies() {
-      const res = await fetch(`/api/coord-replies?board=${boardCode}&x=${coord.x}&y=${coord.y}`);
+      const res = await fetch(apiUrl(`/api/coord-replies?board=${boardCode}&x=${coord.x}&y=${coord.y}`));
       if (res.ok) setReplies(await res.json());
     }
     loadReplies();
@@ -66,7 +67,7 @@ export default function CoordPanel({ boardCode, coord, identity, elements, onClo
     if (!message.trim() || sending) return;
     setSending(true);
     try {
-      await fetch('/api/coord-replies', {
+      await fetch(apiUrl('/api/coord-replies'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': identity.uid },
         body: JSON.stringify({

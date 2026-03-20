@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { apiUrl } from '@/lib/api';
 
 interface CursorData {
   userId: string;
@@ -22,7 +23,7 @@ export default function Cursors({ boardCode, userId, offset, scale }: Props) {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/presence?room=${boardCode}`);
+        const res = await fetch(apiUrl(`/api/presence?room=${boardCode}`));
         if (res.ok) {
           const data: CursorData[] = await res.json();
           setCursors(data.filter(c => c.userId !== userId));
