@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Identity } from '@/lib/identity';
 import { Coordinate } from '@/lib/coord-utils';
 import { supabase } from '@/lib/supabase';
+import { apiUrl } from '@/lib/api';
 import CanvasToolbar from './CanvasToolbar';
 import TextElement from './elements/TextElement';
 import StickyElement from './elements/StickyElement';
@@ -62,7 +63,7 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   // Load elements from Supabase
   useEffect(() => {
     async function loadElements() {
-      const res = await fetch(`/api/elements?board=${boardCode}`);
+      const res = await fetch(apiUrl(`/api/elements?board=${boardCode}`));
       if (res.ok) {
         const data = await res.json();
         setElements(data.filter((e: CanvasElement) => !e.deleted));
@@ -110,7 +111,7 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
     window.addEventListener('mousemove', onMouseMove);
 
     const interval = setInterval(async () => {
-      await fetch('/api/presence', {
+      await fetch(apiUrl('/api/presence'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room: boardCode, userId: identity.uid, x: Math.round(lastX), y: Math.round(lastY), name: identity.name, color: identity.color }),
@@ -194,7 +195,7 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   }, [forceRender]);
 
   const addElement = useCallback(async (type: string, x: number, y: number, data: Record<string, unknown>) => {
-    await fetch('/api/elements', {
+    await fetch(apiUrl('/api/elements'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-User-Id': identity.uid },
       body: JSON.stringify({ board_code: boardCode, type, x, y, data, author_id: identity.uid }),
@@ -236,7 +237,7 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   }, [tool, identity.color, addElement, forceRender]);
 
   async function deleteElement(id: string) {
-    await fetch('/api/elements', {
+    await fetch(apiUrl('/api/elements'), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-User-Id': identity.uid },
       body: JSON.stringify({ id, deleted: true }),

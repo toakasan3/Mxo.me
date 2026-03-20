@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { parseCoordinate, Coordinate } from '@/lib/coord-utils';
 import { Identity } from '@/lib/identity';
+import { apiUrl } from '@/lib/api';
 import CoordPanel from './CoordPanel';
 import { CanvasElement } from '@/components/Canvas/InfiniteCanvas';
 
@@ -30,7 +31,7 @@ export default function CoordSearchBar({ boardCode, identity, onCoordSearch }: P
   async function handleSearch() {
     if (!coord) return;
     onCoordSearch(coord);
-    const res = await fetch(`/api/elements?board=${boardCode}`);
+    const res = await fetch(apiUrl(`/api/elements?board=${boardCode}`));
     if (res.ok) {
       const data = await res.json();
       setElements(data);

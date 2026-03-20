@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getOrCreateIdentity, getRecentRooms, updateName, addRecentRoom, Identity, RecentRoom } from '@/lib/identity';
+import { apiUrl } from '@/lib/api';
 import BoardCard from './BoardCard';
 
 const TABS = ['My Boards', 'Join', 'Coord Search', 'Settings'] as const;
@@ -36,7 +37,7 @@ export default function Dashboard() {
     setCreating(true);
     setError('');
     try {
-      const res = await fetch('/api/boards', {
+      const res = await fetch(apiUrl('/api/boards'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': identity.uid },
         body: JSON.stringify({ owner_id: identity.uid, name: `${identity.name}'s Board` }),
