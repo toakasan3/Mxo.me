@@ -36,8 +36,9 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   const containerRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef({ x: 0, y: 0 });
   const scaleRef = useRef(1);
-  // _renderTick is intentionally unused as a value; setting it triggers re-renders via forceRender
-  const [_renderTick, setRenderTick] = useState(0);
+  // renderTick drives re-renders when refs (offset, scale) change; value itself is intentionally not read
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [renderTick, setRenderTick] = useState(0);
   const forceRender = useCallback(() => setRenderTick(t => t + 1), []);
 
   const [tool, setTool] = useState<Tool>('select');

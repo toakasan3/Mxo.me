@@ -17,9 +17,10 @@ export interface RecentRoom {
 }
 
 function randomHex(len: number): string {
-  const arr = new Uint8Array(len);
+  // Use ceil(len/2) bytes so we get exactly `len` hex characters without truncation
+  const arr = new Uint8Array(Math.ceil(len / 2));
   crypto.getRandomValues(arr);
-  return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('').slice(0, len);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, len);
 }
 
 export function getOrCreateIdentity(): Identity {
