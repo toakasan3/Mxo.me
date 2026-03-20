@@ -5,16 +5,31 @@ import { redis } from '@/lib/redis';
 // Each user's cursor data is stored at `presence:{room}:{userId}` with an 8s TTL.
 // On GET we read the set members, fetch each key, and remove stale members whose keys have expired.
 
+const BOARD_CODE_RE = /^[A-Z0-9_-]{6}$/;
+const USER_ID_RE = /^[0-9a-f]{8}$/;
+const COORD_LIMIT = 10_000_000;
+
+function isFiniteCoord(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= COORD_LIMIT;
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { room, userId, x, y, name, color } = body;
-  if (!room || !userId) return NextResponse.json({ ok: true });
+
+  // Validate required fields to prevent junk data in Redis
+  if (!room || !BOARD_CODE_RE.test(String(room))) return NextResponse.json({ ok: true });
+  if (!userId || !USER_ID_RE.test(String(userId))) return NextResponse.json({ ok: true });
+  if (!isFiniteCoord(x) || !isFiniteCoord(y)) return NextResponse.json({ ok: true });
+
+  const safeName = typeof name === 'string' ? name.slice(0, 50) : 'Unknown';
+  const safeColor = typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#4ECDC4';
 
   const dataKey = `presence:${room}:${userId}`;
   const setKey = `room-users:${room}`;
 
   // Store cursor data with 8s TTL
-  await redis.set(dataKey, JSON.stringify({ userId, x, y, name, color }), { ex: 8 });
+  await redis.set(dataKey, JSON.stringify({ userId, x, y, name: safeName, color: safeColor }), { ex: 8 });
   // Track userId in the room set (no TTL on the set itself — we clean stale members on GET)
   await redis.sadd(setKey, userId);
 
@@ -23,7 +38,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const room = req.nextUrl.searchParams.get('room');
-  if (!room) return NextResponse.json([]);
+  if (!room || !BOARD_CODE_RE.test(room)) return NextResponse.json([]);
 
   const setKey = `room-users:${room}`;
   const userIds: string[] = await redis.smembers(setKey);
