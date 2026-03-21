@@ -13,6 +13,7 @@ import StrokeElement from './elements/StrokeElement';
 import Cursors from './Cursors';
 import CoordPanel from '@/components/CoordSearch/CoordPanel';
 import ElementInputModal, { ModalField } from './ElementInputModal';
+import KeyModal from './KeyModal';
 
 export type Tool = 'select' | 'text' | 'sticky' | 'image' | 'link' | 'stroke';
 
@@ -36,6 +37,8 @@ export interface CanvasElement {
   data: Record<string, unknown>;
   author_id: string;
   deleted: boolean;
+  is_locked?: boolean;
+  key_hint?: string | null;
 }
 
 interface Props {
@@ -62,8 +65,15 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
   const [coordPanelOpen, setCoordPanelOpen] = useState(false);
 
   // Pending element placement (replaces window.prompt)
-  type PendingPlacement = { type: string; x: number; y: number; fields: ModalField[] };
+  type PendingPlacement = { type: string; x: number; y: number; fields: ModalField[]; keyIndex: number; hintIndex: number };
   const [pendingPlacement, setPendingPlacement] = useState<PendingPlacement | null>(null);
+
+  // Key-verify modal state: shown when a locked element requires a key to be modified
+  type PendingKeyVerify = { element: CanvasElement; onVerified: (key: string) => void; error?: string };
+  const [pendingKeyVerify, setPendingKeyVerify] = useState<PendingKeyVerify | null>(null);
+
+  // In-session key cache: elementId → verified raw key (avoids repeated prompts)
+  const verifiedKeys = useRef<Map<string, string>>(new Map());
 
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
@@ -228,11 +238,11 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
     }
   }, [forceRender]);
 
-  const addElement = useCallback(async (type: string, x: number, y: number, data: Record<string, unknown>) => {
+  const addElement = useCallback(async (type: string, x: number, y: number, data: Record<string, unknown>, key?: string, keyHint?: string) => {
     await fetch(apiUrl('/api/elements'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-User-Id': identity.uid },
-      body: JSON.stringify({ board_code: boardCode, type, x, y, data, author_id: identity.uid }),
+      body: JSON.stringify({ board_code: boardCode, type, x, y, data, author_id: identity.uid, key: key || undefined, key_hint: keyHint || undefined }),
     });
   }, [boardCode, identity.uid]);
 
@@ -260,21 +270,70 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
     const cy = (e.clientY - offsetRef.current.y) / scaleRef.current;
 
     if (tool === 'text') {
-      setPendingPlacement({ type: 'text', x: cx, y: cy, fields: [{ label: 'Text content', placeholder: 'Enter text…' }] });
+      setPendingPlacement({ type: 'text', x: cx, y: cy, keyIndex: 1, hintIndex: 2, fields: [
+        { label: 'Text content', placeholder: 'Enter text…' },
+        { label: 'Secret key (optional)', placeholder: 'Leave blank for no lock', type: 'password' },
+        { label: 'Key hint (optional)', placeholder: 'Hint to remember your key' },
+      ]});
     } else if (tool === 'sticky') {
-      setPendingPlacement({ type: 'sticky', x: cx, y: cy, fields: [{ label: 'Sticky note content', placeholder: 'Note…' }] });
+      setPendingPlacement({ type: 'sticky', x: cx, y: cy, keyIndex: 1, hintIndex: 2, fields: [
+        { label: 'Sticky note content', placeholder: 'Note…' },
+        { label: 'Secret key (optional)', placeholder: 'Leave blank for no lock', type: 'password' },
+        { label: 'Key hint (optional)', placeholder: 'Hint to remember your key' },
+      ]});
     } else if (tool === 'image') {
-      setPendingPlacement({ type: 'image', x: cx, y: cy, fields: [{ label: 'Image URL', placeholder: 'https://…' }] });
+      setPendingPlacement({ type: 'image', x: cx, y: cy, keyIndex: 1, hintIndex: 2, fields: [
+        { label: 'Image URL', placeholder: 'https://…' },
+        { label: 'Secret key (optional)', placeholder: 'Leave blank for no lock', type: 'password' },
+        { label: 'Key hint (optional)', placeholder: 'Hint to remember your key' },
+      ]});
     } else if (tool === 'link') {
-      setPendingPlacement({ type: 'link', x: cx, y: cy, fields: [{ label: 'URL', placeholder: 'https://…' }, { label: 'Label (optional)', placeholder: 'Display text' }] });
+      setPendingPlacement({ type: 'link', x: cx, y: cy, keyIndex: 2, hintIndex: 3, fields: [
+        { label: 'URL', placeholder: 'https://…' },
+        { label: 'Label (optional)', placeholder: 'Display text' },
+        { label: 'Secret key (optional)', placeholder: 'Leave blank for no lock', type: 'password' },
+        { label: 'Key hint (optional)', placeholder: 'Hint to remember your key' },
+      ]});
     }
   }, [tool, identity.color, addElement, forceRender]);
 
-  async function deleteElement(id: string) {
+  async function deleteElement(id: string, key?: string) {
     await fetch(apiUrl('/api/elements'), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-User-Id': identity.uid },
-      body: JSON.stringify({ id, deleted: true }),
+      body: JSON.stringify({ id, deleted: true, ...(key ? { key } : {}) }),
+    });
+  }
+
+  function handleDelete(el: CanvasElement) {
+    if (!el.is_locked) {
+      deleteElement(el.id);
+      return;
+    }
+    // Check in-session key cache first
+    const cached = verifiedKeys.current.get(el.id);
+    if (cached) {
+      deleteElement(el.id, cached);
+      return;
+    }
+    // Show key modal
+    setPendingKeyVerify({
+      element: el,
+      onVerified: async (key: string) => {
+        const res = await fetch(apiUrl('/api/verify-key'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ elementId: el.id, key }),
+        });
+        const json = await res.json();
+        if (json.success) {
+          verifiedKeys.current.set(el.id, key);
+          setPendingKeyVerify(null);
+          deleteElement(el.id, key);
+        } else {
+          setPendingKeyVerify(prev => prev ? { ...prev, error: json.error || 'Invalid key. Try again.' } : null);
+        }
+      },
     });
   }
 
@@ -343,7 +402,7 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
 
         {/* Elements */}
         {elements.map(el => {
-          const props = { element: el, onDelete: () => deleteElement(el.id) };
+          const props = { element: el, onDelete: () => handleDelete(el) };
           if (el.type === 'text') return <TextElement key={el.id} {...props} />;
           if (el.type === 'sticky') return <StickyElement key={el.id} {...props} />;
           if (el.type === 'image') return <ImageElement key={el.id} {...props} />;
@@ -381,19 +440,31 @@ export default function InfiniteCanvas({ boardCode, identity, jumpTo, marker }: 
           title={`Add ${pendingPlacement.type}`}
           fields={pendingPlacement.fields}
           onConfirm={async (values) => {
-            const { type, x, y } = pendingPlacement;
+            const { type, x, y, keyIndex, hintIndex } = pendingPlacement;
+            const key = values[keyIndex]?.trim();
+            const hint = values[hintIndex]?.trim();
             if (type === 'text' && values[0]?.trim()) {
-              await addElement('text', x, y, { text: values[0].trim(), fontSize: 16, color: '#ffffff' });
+              await addElement('text', x, y, { text: values[0].trim(), fontSize: 16, color: '#ffffff' }, key, hint);
             } else if (type === 'sticky') {
-              await addElement('sticky', x, y, { text: values[0]?.trim() || 'Note', color: '#FFEAA7' });
+              await addElement('sticky', x, y, { text: values[0]?.trim() || 'Note', color: '#FFEAA7' }, key, hint);
             } else if (type === 'image' && values[0]?.trim()) {
-              await addElement('image', x, y, { url: values[0].trim(), width: 200, height: 150 });
+              await addElement('image', x, y, { url: values[0].trim(), width: 200, height: 150 }, key, hint);
             } else if (type === 'link' && values[0]?.trim()) {
-              await addElement('link', x, y, { url: values[0].trim(), label: values[1]?.trim() || values[0].trim() });
+              await addElement('link', x, y, { url: values[0].trim(), label: values[1]?.trim() || values[0].trim() }, key, hint);
             }
             setPendingPlacement(null);
           }}
           onCancel={() => setPendingPlacement(null)}
+        />
+      )}
+
+      {/* Key-verify modal for locked elements */}
+      {pendingKeyVerify && (
+        <KeyModal
+          hint={pendingKeyVerify.element.key_hint ?? null}
+          error={pendingKeyVerify.error}
+          onConfirm={pendingKeyVerify.onVerified}
+          onCancel={() => setPendingKeyVerify(null)}
         />
       )}
     </div>

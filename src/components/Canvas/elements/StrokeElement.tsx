@@ -25,6 +25,7 @@ export default function StrokeElement({ element, onDelete }: Props) {
           strokeLinejoin="round"
         />
       </svg>
+      {element.is_locked && <span className="absolute top-0 left-0 text-xs opacity-60" title="Locked">🔒</span>}
       <button onClick={onDelete} className="hidden group-hover:block absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full text-white text-xs leading-5 text-center">×</button>
     </div>
   );

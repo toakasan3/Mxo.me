@@ -23,6 +23,7 @@ export default function ImageElement({ element, onDelete }: Props) {
     <div className="absolute group" style={{ left: x, top: y }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={src} alt="" style={{ width: (data.width as number) || 200, height: (data.height as number) || 150, objectFit: 'cover', borderRadius: 8 }} />
+      {element.is_locked && <span className="absolute top-1 left-1 text-xs opacity-70 bg-black/50 rounded px-1" title="Locked">🔒</span>}
       <button onClick={onDelete} className="hidden group-hover:block absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full text-white text-xs leading-5 text-center">×</button>
     </div>
   );
